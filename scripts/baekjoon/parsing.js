@@ -196,6 +196,37 @@ function parseProblemDescription(doc = document) {
   return {};
 }
 
+function parseTestCases(doc = document) {
+  const problemId = doc.getElementsByTagName('title')[0].textContent.split(':')[0].replace(/[^0-9]/, '');
+  const testCases = {
+    input : {},
+    output : {}
+  }
+
+  let index = 1;
+  while (true) {
+    try {
+      testCases['output'][index] = doc.getElementById(`sample-output-${index}`).textContent;
+    } catch(error){
+      testCases['output'][index] = "";
+    }
+
+    try {
+      testCases['input'][index] = doc.getElementById(`sample-input-${index}`).textContent;
+    } catch(error){
+      testCases['input'][index] = "";
+    }
+
+    if (testCases['output'][index] === "" && testCases['input'][index] === ""){
+      break;
+    }
+
+    index++;
+  }
+  updateTestCasesFromStats({ problemId, ...testCases})
+  return testCases
+}
+
 async function fetchProblemDescriptionById(problemId) {
   return fetch(`https://www.acmicpc.net/problem/${problemId}`)
     .then((res) => res.text())
@@ -212,6 +243,15 @@ async function fetchSubmitCodeById(submissionId) {
 
 async function fetchSolvedACById(problemId) {
   return chrome.runtime.sendMessage({sender: "baekjoon", task : "SolvedApiCall", problemId : problemId});
+}
+
+async function fetchTestCasesById(problemId) {
+  fetch(`https://www.acmicpc.net/problem/${problemId}`, { method: 'GET' })
+    .then((res) => res.text())
+    .then((html) =>{
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return parseTestCases(doc);
+    });
 }
 
 async function getProblemDescriptionById(problemId) {
@@ -241,6 +281,15 @@ async function getSolvedACById(problemId) {
   return jsonData;
 }
 
+async function getTestCasesById(problemId) {
+  let testCases = await getTestCasesFromStats(problemId);
+  if (isNull(testCases)) {
+    testCases = await fetchTestCasesById(problemId);
+    updateTestCasesFromStats(testCases); // not await
+  }
+  return testCases;
+}
+
 /**
  * 제출 소스코드, 문제 설명, 예시 입력, 예시 출력, 문제 태그를 반환합니다.
  * @param {Object} problemId
@@ -250,14 +299,24 @@ async function getSolvedACById(problemId) {
 async function findProblemInfoAndSubmissionCode(problemId, submissionId) {
   log('in find with promise');
   if (!isNull(problemId) && !isNull(submissionId)) {
-    return Promise.all([getProblemDescriptionById(problemId), getSubmitCodeById(submissionId), getSolvedACById(problemId)])
-      .then(([description, code, solvedJson]) => {
+    return Promise.all([
+      getProblemDescriptionById(problemId),
+      getSubmitCodeById(submissionId),
+      getSolvedACById(problemId),
+      getTestCasesById(problemId),
+    ])
+      .then(([
+        description,
+        code,
+        solvedJson,
+        testCases
+             ]
+      ) => {
         const problem_tags = solvedJson.tags.flatMap((tag) => tag.displayNames).filter((tag) => tag.language === 'ko').map((tag) => tag.name);
         const title = solvedJson.titleKo;
         const level = bj_level[solvedJson.level];
-
         const { problem_description, problem_input, problem_output } = description;
-        return { problemId, submissionId, title, level, code, problem_description, problem_input, problem_output, problem_tags };
+        return { problemId, submissionId, title, level, code, problem_description, problem_input, problem_output, problem_tags, testCases };
       })
       .catch((err) => {
         console.log('error ocurred: ', err);
@@ -283,18 +342,6 @@ async function fetchProblemInfoByIds(problemIds) {
     const result = await fetch(`https://solved.ac/api/v3/problem/lookup?problemIds=${pids.join('%2C')}`, { method: 'GET' });
     return result.json();
   }).then(results => results.flatMap(result => result));
-}
-
-/**
- * 문제의 상세 정보 목록을 문제 번호 목록으로 한꺼번에 반환합니다.
- * (한번 조회 시 2개씩 병렬로 진행)
- * @param {Array} problemIds
- * @returns {Promise<Array>}
- */
-async function fetchProblemDescriptionsByIds(problemIds) {
-  return asyncPool(2, problemIds, async (problemId) => {
-    return getProblemDescriptionById(problemId);
-  })
 }
 
 /**

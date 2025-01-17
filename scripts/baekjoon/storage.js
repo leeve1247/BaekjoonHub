@@ -92,6 +92,21 @@ class TTLCacheStats {
 const problemCache = new TTLCacheStats('problem');
 const submitCodeCache = new TTLCacheStats('scode');
 const SolvedACCache = new TTLCacheStats('solvedac');
+const testCasesCache = new TTLCacheStats('testcases');
+
+async function updateTestCasesFromStats(problem) {
+  const data = {
+    id: problem.problemId,
+    input: problem.input,
+    output: problem.output,
+  };
+  await testCasesCache.update(data);
+}
+
+async function getTestCasesFromStats(problemId) {
+  return testCasesCache.get(problemId);
+}
+
 
 async function updateProblemsFromStats(problem) {
   const data = {

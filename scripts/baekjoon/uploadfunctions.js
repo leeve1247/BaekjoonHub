@@ -15,7 +15,7 @@ async function uploadOneSolveProblemOnGit(bojData, cb) {
     console.error('token or hook is null', token, hook);
     return;
   }
-  return upload(token, hook, bojData.code, bojData.readme, bojData.directory, bojData.fileName, bojData.message, cb);
+  return upload(token, hook, bojData.code, bojData.readme, bojData.directory, bojData.fileName, bojData.message, cb, bojData.testCases);
 }
 
 /** Github api를 사용하여 업로드를 합니다.
@@ -28,8 +28,9 @@ async function uploadOneSolveProblemOnGit(bojData, cb) {
  * @param {string} filename - 업로드할 파일명
  * @param {string} commitMessage - 커밋 메시지
  * @param {function} cb - 콜백 함수 (ex. 업로드 후 로딩 아이콘 처리 등)
+ * @param testCases
  */
-async function upload(token, hook, sourceText, readmeText, directory, filename, commitMessage, cb) {
+async function upload(token, hook, sourceText, readmeText, directory, filename, commitMessage, cb, testCases) {
   /* 업로드 후 커밋 */
   const git = new GitHub(hook, token);
   const stats = await getStats();
@@ -41,13 +42,36 @@ async function upload(token, hook, sourceText, readmeText, directory, filename, 
   const { refSHA, ref } = await git.getReference(default_branch);
   const source = await git.createBlob(sourceText, `${directory}/${filename}`); // 소스코드 파일
   const readme = await git.createBlob(readmeText, `${directory}/README.md`); // readme 파일
-  const treeSHA = await git.createTree(refSHA, [source, readme]);
+
+  console.log(testCases)
+
+  // test case: input 파일
+  const test_case_input = []
+  for (let i = 1; i < 1; i++){
+    test_case_input[i] = await git.createBlob(testCases["input"][i], `${directory}/input/${i}.txt`);
+  }
+  // test case: output 파일
+  const test_case_output = []
+  for (let i = 1; i < 1; i++){
+    test_case_output[i] = await git.createBlob(testCases["output"][i], `${directory}/output/${i}.txt`);
+  }
+
+
+  // const treeSHA = await git.createTree(refSHA, [source, readme]);
+  const treeSHA = await git.createTree(refSHA, [source, readme] + test_case_input + test_case_output);
+
   const commitSHA = await git.createCommit(commitMessage, treeSHA, refSHA);
   await git.updateHead(ref, commitSHA);
 
   /* stats의 값을 갱신합니다. */
   updateObjectDatafromPath(stats.submission, `${hook}/${source.path}`, source.sha);
   updateObjectDatafromPath(stats.submission, `${hook}/${readme.path}`, readme.sha);
+
+  for (let i = 1; i < 1; i++){
+    updateObjectDatafromPath(stats.submission, `${hook}/${test_case_input[i].path}`, test_case_input[i].sha);
+    updateObjectDatafromPath(stats.submission, `${hook}/${test_case_output[i].path}`, test_case_output[i].sha);
+  }
+
   await saveStats(stats);
   // 콜백 함수 실행
   if (typeof cb === 'function') {
